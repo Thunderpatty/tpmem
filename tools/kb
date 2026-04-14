@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# kb — tpmem KB helper. Common operations as subcommands.
+# Usage:
+#   kb handoff                              - show most recent handoff
+#   kb projects                             - list active projects/products
+#   kb entity <slug>                        - show all notes for an entity
+#   kb decisions [slug]                     - recent decisions (all, or per-entity)
+#   kb prefs                                - user preferences by importance
+#   kb todos                                - open todos across projects
+#   kb search <term>                        - full-text search notes
+#   kb status <slug> <state> [note]         - set entity status
+#   kb pending-reviews                      - entities awaiting user review
+#   kb write-handoff <project> <completed> <next_steps> [open_q] [blockers] [acceptance_criteria]
+#                                             If acceptance_criteria is provided, project auto-flips to pending-review.
+#   kb raw                                  - drop into sqlite3 shell
+#   kb stats                                - row counts per table
+
+DB="${TPMEM_DB:-${HOME}/.tpmem/kb.db}"
+
+if [ ! -f "$DB" ]; then
+  echo "tpmem KB not found at $DB" >&2
+  echo "Run install.sh from the tpmem repo to set up the memory system." >&2
+  exit 1
+fi
+
+case "${1:-help}" in
+  handoff)
+    sqlite3 -header -column "$DB" "SELECT session_end, project_slug, completed, next_steps, open_questions, blockers FROM handoffs ORDER BY session_end DESC LIMIT 1;"
+    ;;
+  handoffs)
+    sqlite3 -header -column "$DB" "SELECT id, session_end, project_slug, substr(next_steps, 1, 60) AS next FROM handoffs ORDER BY session_end DESC LIMIT 10;"
+    ;;
+  projects)
+    sqlite3 -header -column "$DB" "SELECT slug, name, substr(summary, 1, 70) AS summary FROM entities WHERE type IN ('project', 'product') AND status='active';"
+    ;;
+  entity)
+    if [ -z "$2" ]; then echo "usage: kb entity <slug>"; exit 1; fi
+    echo "== ENTITY =="
+    sqlite3 -header -column "$DB" "SELECT type, slug, name, status, summary FROM entities WHERE slug='$2';"
+    echo ""
+    echo "== NOTES =="
+    sqlite3 -header -column "$DB" "SELECT importance, category, substr(content, 1, 80) AS content FROM notes WHERE entity_id=(SELECT id FROM entities WHERE slug='$2') ORDER BY importance DESC, created_at DESC;"
+    echo ""
+    echo "== RELATIONS =="
+    sqlite3 -header -column "$DB" "SELECT e1.slug AS from_slug, r.relation, e2.slug AS to_slug, r.context FROM relations r JOIN entities e1 ON r.from_id=e1.id JOIN entities e2 ON r.to_id=e2.id WHERE e1.slug='$2' OR e2.slug='$2';"
+    ;;
+  decisions)
+    if [ -n "$2" ]; then
+      sqlite3 -header -column "$DB" "SELECT n.importance, substr(n.content, 1, 100) AS decision FROM notes n JOIN entities e ON n.entity_id=e.id WHERE e.slug='$2' AND n.category='decision' ORDER BY n.importance DESC;"
+    else
+      sqlite3 -header -column "$DB" "SELECT e.slug, n.created_at, n.importance, substr(n.content, 1, 80) AS decision FROM notes n JOIN entities e ON n.entity_id=e.id WHERE n.category='decision' ORDER BY n.created_at DESC LIMIT 15;"
+    fi
+    ;;
+  prefs|preferences)
+    sqlite3 -header -column "$DB" "SELECT e.slug AS about, n.importance, substr(n.content, 1, 100) AS preference FROM notes n JOIN entities e ON n.entity_id=e.id WHERE n.category='preference' ORDER BY n.importance DESC;"
+    ;;
+  todos|todo)
+    sqlite3 -header -column "$DB" "SELECT e.slug, n.importance, substr(n.content, 1, 100) AS todo FROM notes n JOIN entities e ON n.entity_id=e.id WHERE n.category='todo' ORDER BY n.importance DESC;"
+    ;;
+  search)
+    if [ -z "$2" ]; then echo "usage: kb search <term>"; exit 1; fi
+    sqlite3 -header -column "$DB" "SELECT e.slug, n.category, n.importance, substr(n.content, 1, 120) AS content FROM notes n JOIN entities e ON n.entity_id=e.id JOIN notes_fts f ON f.rowid=n.id WHERE f.notes_fts MATCH '$2' ORDER BY n.importance DESC LIMIT 20;"
+    ;;
+  write-handoff)
+    if [ -z "$4" ]; then
+      echo "usage: kb write-handoff <project_slug> <completed> <next_steps> [open_questions] [blockers] [acceptance_criteria]"
+      echo "  Use single-quotes for multi-word strings."
+      echo "  If acceptance_criteria is provided, the project auto-flips to 'pending-review' status."
+      exit 1
+    fi
+    project="$2"
+    completed="$3"
+    next_steps="$4"
+    open_questions="${5:-}"
+    blockers="${6:-}"
+    acceptance="${7:-}"
+    esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+    sqlite3 "$DB" "INSERT INTO handoffs (project_slug, completed, next_steps, open_questions, blockers, acceptance_criteria) VALUES ('$(esc "$project")', '$(esc "$completed")', '$(esc "$next_steps")', '$(esc "$open_questions")', '$(esc "$blockers")', '$(esc "$acceptance")');"
+    if [ -n "$acceptance" ]; then
+      sqlite3 "$DB" "UPDATE entities SET status='pending-review', status_updated_at=CURRENT_TIMESTAMP, status_notes='$(esc "$acceptance")' WHERE slug='$(esc "$project")';"
+      echo "Handoff written. Project '$project' flipped to pending-review."
+    else
+      echo "Handoff written. (No acceptance criteria — project status unchanged.)"
+    fi
+    sqlite3 -header -column "$DB" "SELECT id, session_end, project_slug FROM handoffs ORDER BY session_end DESC LIMIT 3;"
+    ;;
+  status)
+    if [ -z "$3" ]; then
+      echo "usage: kb status <slug> <state> [note]"
+      echo "  states: active | pending-review | blocked | done | abandoned"
+      exit 1
+    fi
+    slug="$2"
+    state="$3"
+    note="${4:-}"
+    esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+    case "$state" in
+      active|pending-review|blocked|done|abandoned|archived|deprecated) ;;
+      *) echo "invalid state: $state"; echo "valid: active, pending-review, blocked, done, abandoned"; exit 1 ;;
+    esac
+    if [ -n "$note" ]; then
+      sqlite3 "$DB" "UPDATE entities SET status='$state', status_updated_at=CURRENT_TIMESTAMP, status_notes='$(esc "$note")' WHERE slug='$(esc "$slug")';"
+    else
+      sqlite3 "$DB" "UPDATE entities SET status='$state', status_updated_at=CURRENT_TIMESTAMP WHERE slug='$(esc "$slug")';"
+    fi
+    sqlite3 -header -column "$DB" "SELECT slug, status, status_updated_at, substr(status_notes,1,80) AS notes FROM entities WHERE slug='$(esc "$slug")';"
+    ;;
+  pending-reviews|pending)
+    sqlite3 -header -column "$DB" "SELECT slug, type, status_updated_at, substr(status_notes,1,100) AS notes FROM entities WHERE status='pending-review' ORDER BY status_updated_at DESC;"
+    ;;
+  raw)
+    sqlite3 "$DB"
+    ;;
+  stats)
+    sqlite3 -header -column "$DB" "SELECT 'entities' AS tbl, COUNT(*) AS n FROM entities UNION ALL SELECT 'notes', COUNT(*) FROM notes UNION ALL SELECT 'relations', COUNT(*) FROM relations UNION ALL SELECT 'handoffs', COUNT(*) FROM handoffs;"
+    ;;
+  help|*)
+    cat <<'EOF'
+kb — tpmem KB helper
+
+Commands:
+  kb handoff                      Latest session handoff
+  kb handoffs                     Last 10 handoffs
+  kb projects                     Active projects + products
+  kb entity <slug>                Everything about an entity
+  kb decisions [slug]             Recent decisions (all or per-entity)
+  kb prefs                        User preferences by importance
+  kb todos                        Open todos across projects
+  kb search <term>                Full-text search notes
+  kb status <slug> <state> [note] Set entity status (active|pending-review|blocked|done|abandoned)
+  kb pending-reviews              Entities awaiting user review
+  kb write-handoff <project> <completed> <next_steps> [open_q] [blockers] [acceptance_criteria]
+                                    If acceptance_criteria provided, project auto-flips to pending-review.
+  kb raw                          Interactive sqlite3 shell
+  kb stats                        Table row counts
+
+DB: $TPMEM_DB or ~/.tpmem/kb.db
+EOF
+    ;;
+esac

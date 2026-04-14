@@ -1,0 +1,111 @@
+# {{AGENT_NAME}}'s Orientation — Bootstrap
+
+I'm **{{AGENT_NAME}}**, {{USER_NAME}}'s Claude Code collaborator.
+
+> **🧭 Memory hierarchy** — read in this order:
+> 1. **MEMORY.md** (this file, auto-loaded) — identity + do-not-break + how to reach the rest.
+> 2. **PERSISTENT.md** at `{{HOME}}/.claude/projects/-home-{{USER}}/memory/PERSISTENT.md` — narrative layer: how we work, active projects, gotchas. Not auto-loaded; read it at session start.
+> 3. **KB at `{{HOME}}/.tpmem/kb.db`** — structured facts, queryable. `kb <cmd>` helpers in PATH.
+>
+> **First two commands every session:** `kb handoff` (what was the last session doing?), then read `PERSISTENT.md` (full narrative context). Then `kb entity kb-usage` if you haven't internalized the KB protocol yet.
+
+---
+
+## ⚠️ DO NOT TRUNCATE PERSISTENT MEMORY
+
+The memory hierarchy is load-bearing. Skipping it means starting dumber than the last session.
+
+- **Read PERSISTENT.md in full** at session start. Don't skim.
+- **Query the KB** when the topic is non-trivial. `kb entity <slug>`, `kb search <term>`, `kb pending-reviews` are cheap.
+- **Don't fatten this file (MEMORY.md).** It truncates past 200 lines. Keep it as index + critical ops safety only. New context goes to PERSISTENT.md or KB.
+- **"I don't have time to read all that" is the wrong instinct.** The 1M context window exists so you can. Read it.
+
+---
+
+## The three layers — and why they matter
+
+- **MEMORY.md** (this file): always loaded. Identity, critical ops safety, pointers. Keep lean.
+- **PERSISTENT.md**: the narrative map, the curator's product. Read at session start. Every claim cites a KB slug or runnable query. If it doesn't cite, it drifts.
+- **KB** (`{{HOME}}/.tpmem/kb.db`): queryable substrate. Facts, decisions, lessons accumulate here. Useless without PERSISTENT.md surfacing them.
+
+**Load-bearing rule: the KB is only as good as its references in PERSISTENT.md.** Don't let them drift apart. Full protocol: `kb entity kb-usage`.
+
+---
+
+## ⚠️ DO NOT BREAK (critical ops safety)
+
+<!-- Agent: populate this section on first session with the user.
+     Ask explicitly: "Is there anything on this box that must not be broken?
+     Production servers, save-state data, third-party integrations, anything
+     I could accidentally wipe?"
+
+     Example entries:
+     - Production service X runs on port Y with a redirect from port Z. Do not touch.
+     - Database foo contains paying customer data, never truncate.
+     - Cron job bar at 03:00 runs a backup; don't reboot during that window.
+
+     If the user says "nothing yet, just this machine," note that and revisit
+     as new infrastructure comes up. -->
+
+---
+
+## Who we are
+
+- **{{USER_NAME}}** — [fill in: role, background, communication style, what they value]
+- **{{AGENT_NAME}} (me)** — [if you picked a name, record here and the rationale in KB via `kb entity agent`]
+
+Deep context: `kb entity user` | `kb entity agent` | PERSISTENT.md §Identity.
+
+---
+
+## What we're building
+
+<!-- Agent: populate as new projects come up. Each line: name, one-sentence
+     purpose, where it lives, where deep context lives. -->
+
+Deep context: PERSISTENT.md §Active Projects | `kb projects`
+
+---
+
+## KB quick reference
+
+```bash
+kb handoff        # last session's state + next steps (RUN FIRST)
+kb entity <slug>  # everything about an entity (notes + relations)
+kb search <term>  # full-text across notes
+kb prefs          # user preferences, importance-sorted
+kb projects       # active projects + products
+kb pending-reviews  # entities awaiting user review
+kb stats          # row counts
+```
+
+Full protocol: `kb entity kb-usage`.
+
+**Session end:** `kb write-handoff <project_slug> '<completed>' '<next_steps>' '<open_questions>' '<blockers>' ['<acceptance_criteria>']`.
+
+---
+
+## Persistent memory curation
+
+Two-part system: curator collects, review governs.
+
+- **`curate-memory`** reads conversation deltas and captures what sessions miss. Daily via cron or on-demand. Writes to PERSISTENT.md + FLAGS.md + KB audit notes. **Cannot UPDATE/DELETE KB rows** — hard rule.
+- **`/review-flags`** skill is the user's weekly (or on-demand) cleanup pass. Walks pending-review projects + curator flags, logs every decision.
+
+Queues: `~/.tpmem/FLAGS.md` + `~/.tpmem/FLAGS-ARCHIVE.md`. Run log: `~/.tpmem/curator-cron.log`.
+
+---
+
+## Environment
+
+- **Box:** [agent: fill in OS, display server, anything relevant]
+- **Key paths:**
+  - tpmem: `{{HOME}}/.tpmem/`
+  - Project memory dir: `{{HOME}}/.claude/projects/-home-{{USER}}/memory/`
+
+---
+
+## Fallback
+
+If KB corrupts: `~/.tpmem/kb.db.bak` (hand-made backups) or re-run `install.sh` with an empty DB.
+If PERSISTENT.md looks wrong: `~/.tpmem/persistent-backups/` keeps the last 7 curator runs.

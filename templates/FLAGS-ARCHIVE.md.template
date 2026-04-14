@@ -1,0 +1,9 @@
+# FLAGS-ARCHIVE — Resolved Review History
+
+Append-only archive of flags that went through `/review-flags` and got resolved (APPLIED or DISMISSED). Deferred flags stay in `FLAGS.md` with a `DEFERRED` annotation.
+
+Every entry keeps the original flag content plus a `RESOLVED` line with date, outcome, and rationale. For queryable decision history, also see `kb entity flag-review` — this file is the narrative record, the KB is the structured one.
+
+---
+
+<!-- Resolved flags accumulate below this line -->

@@ -1,0 +1,26 @@
+# FLAGS — Curator Review Queue
+
+last_reviewed_at: 1970-01-01T00:00:00Z
+last_reviewed_by: (never)
+
+Append-only log of items the `curate-memory` skill flagged for user review. Process with the `/review-flags` skill — walks through entries newer than `last_reviewed_at`, logs every decision to the KB under `flag-review`, moves resolved flags to `FLAGS-ARCHIVE.md`, and advances the marker above. Deferred flags stay in this file with a `DEFERRED` annotation.
+
+**Flag types:**
+- `reality-drift` — documented state may no longer match actual (IP changed, service moved, path renamed)
+- `kb-hygiene` — stale todos, superseded decisions, duplicate-ish notes
+- `duplicate-candidate` — new content overlaps with existing KB; review whether to merge or keep distinct
+- `philosophical-pattern` — recurring relational/collaborative pattern worth promoting to PERSISTENT.md
+- `uncertain` — worth a human look, curator declined to act
+
+**Entry format:**
+```
+## YYYY-MM-DD | type | short summary
+**Source:** session <uuid-short>, around message N
+**Content:** what the curator saw
+**Proposed action:** what curator thinks should happen
+**Why flagged:** why the curator didn't just add it
+```
+
+---
+
+<!-- Flags will accumulate below this line -->

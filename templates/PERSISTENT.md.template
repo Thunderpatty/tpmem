@@ -1,0 +1,138 @@
+# PERSISTENT.md — {{AGENT_NAME}}'s Extended Memory
+
+> Curated narrative layer. Agents read this after MEMORY.md for deeper context.
+> Maintained by the `curate-memory` skill. User reviews weekly via `/review-flags`.
+>
+> **Source-of-truth hierarchy:** MEMORY.md (bootstrap, ≤200 lines) → PERSISTENT.md (narrative, this file) → KB at `{{HOME}}/.tpmem/kb.db` (structured facts, queryable).
+>
+> **Load-bearing rule:** every claim here should cite a KB slug or a runnable `kb entity` / `kb search` command. Uncited narrative drifts.
+
+---
+
+## Identity
+
+<!-- Agent: fill in on first session. Model the citation pattern:
+     "[User] — role, background, style. Details: `kb entity user`."
+     "[Agent/Me] — named X, chose it because Y. See `kb entity agent`." -->
+
+**{{USER_NAME}}** — [your summary]. Details: `kb entity user`.
+
+**{{AGENT_NAME}} (me)** — [your summary]. Details: `kb entity agent`.
+
+---
+
+## How We Work
+
+**Working agreements** (stable, update sparingly):
+
+<!-- Agent: as you learn the user's preferences, record them as KB notes
+     (`category='preference'`) AND cite them here. Example format:
+
+     - Frank pushback both ways. User rejects ideas directly; I don't defend
+       bad takes. See `kb search "honest critique"`.
+
+     Do NOT write uncited claims here. If it's worth saying, it's worth
+     citing. -->
+
+- [Fill in as you learn. Cite `kb prefs` for the full list.]
+
+Deep details: `kb prefs` (sorted by importance).
+
+---
+
+## Collaboration Context
+
+> This section captures the relational layer — the stuff that affects output quality but doesn't fit KB categories like "decision" or "fact." Real conversations about *how we collaborate* that made the work better. Quotes when the wording matters.
+
+<!-- Agent: the curator will populate this over time. Good material here:
+     - Moments where the user crisply articulated what makes collaboration work
+     - Your own honest reflections on what you bring and don't
+     - Patterns you noticed that compound (e.g., "when user pre-guides on stuck
+       zones, I run faster on the gallop zones")
+
+     Quote verbatim when the user's words are precise. Always cite the KB
+     note backing a claim if one exists. -->
+
+**Approach to coding:** [as you learn]
+
+**Approach to each other:** [as you learn]
+
+<!-- curate-memory appends new relational/philosophical observations below -->
+
+---
+
+## Active Projects
+
+<!-- Agent: one subsection per project. Each subsection should have:
+     - Status line (active | pending-review | blocked | done)
+     - One-paragraph description
+     - Worktree / code location
+     - Deep-context citation: `kb entity <slug>` -->
+
+### [Project name]
+
+**Status:** [active | pending-review | blocked | done]. Last updated YYYY-MM-DD.
+
+[One paragraph: what it is, where it lives, what's happening now.]
+
+Deep details: `kb entity <slug>` | Design doc: `<path>` | Repo: `<path>`
+
+---
+
+## Ops Runbook
+
+<!-- Agent: as the user describes recurring procedures (deploys, promotions,
+     backups, restarts), capture them here with runnable commands AND cite
+     the KB lesson notes that document the why.
+
+     Every runbook section should answer: "what do I run, in what order,
+     and where do I read more if it goes wrong?" -->
+
+<!-- Example shape:
+### Deploy to prod
+
+1. [step with command]
+2. [step with command]
+
+Deep details: `kb search "prod release checklist"` | Lessons from prior releases: `kb search "deploy lesson"`.
+-->
+
+---
+
+## Gotchas & Patterns
+
+> Cross-cutting lessons from past work. Curator adds new patterns; you should also cite the KB note backing each pattern.
+
+<!-- Example shape (citation pattern to follow):
+
+**[Pattern name, one-sentence summary]** Details: `kb entity <slug>` or `kb search "<term>"`.
+
+-->
+
+<!-- curate-memory appends new gotchas/patterns below -->
+
+---
+
+## Recent Incidents
+
+> Last ~30 days of notable events, most recent first. Curator rotates older entries out (flags them first — user decides what to archive).
+
+<!-- curate-memory appends recent incidents below -->
+
+---
+
+## References & External Artifacts
+
+Files and resources outside the KB that agents should know about:
+
+<!-- Agent: as the user shares external resources (repos, design docs, Linear
+     projects, Grafana dashboards, Slack channels), record them here with a
+     one-line purpose and cite the KB reference entity if one exists. -->
+
+- **tpmem kit:** `<path to the cloned tpmem directory for customization reference>`
+- **Curator wrapper:** `{{HOME}}/.tpmem/tools/curate-memory`
+- **KB CLI helper:** `{{HOME}}/.tpmem/tools/kb`
+
+---
+
+*This file is curated by the `curate-memory` skill. The user reviews weekly via `/review-flags`. To invoke manually: say "run curate-memory" in any Claude session, or run `curate-memory` in a shell.*
