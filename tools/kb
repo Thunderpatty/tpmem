@@ -4,6 +4,7 @@
 #   kb handoff                              - show most recent handoff
 #   kb projects                             - list active projects/products
 #   kb entity <slug>                        - show all notes for an entity
+#   kb context <slug|topic>                 - compact entity view (fuzzy): top dated notes + one-hop relations
 #   kb decisions [slug]                     - recent decisions (all, or per-entity)
 #   kb prefs                                - user preferences by importance
 #   kb todos                                - open todos across projects
@@ -43,6 +44,22 @@ case "${1:-help}" in
     echo ""
     echo "== RELATIONS =="
     sqlite3 -header -column "$DB" "SELECT e1.slug AS from_slug, r.relation, e2.slug AS to_slug, r.context FROM relations r JOIN entities e1 ON r.from_id=e1.id JOIN entities e2 ON r.to_id=e2.id WHERE e1.slug='$2' OR e2.slug='$2';"
+    ;;
+  context)
+    # compact, inspectable entity view: entity + top notes (dated) + one-hop relations.
+    # fuzzy-resolves a slug OR topic.
+    if [ -z "$2" ]; then echo "usage: kb context <slug|topic>"; exit 1; fi
+    eid="$(sqlite3 "$DB" "SELECT id FROM entities WHERE slug='$2' LIMIT 1;")"
+    [ -z "$eid" ] && eid="$(sqlite3 "$DB" "SELECT id FROM entities WHERE slug LIKE '%$2%' OR name LIKE '%$2%' ORDER BY (slug='$2') DESC, length(slug) ASC LIMIT 1;")"
+    if [ -z "$eid" ]; then echo "no entity matched '$2' — try:  kb search $2"; exit 0; fi
+    echo "== ENTITY =="
+    sqlite3 -line "$DB" "SELECT type, slug, name, status, substr(summary,1,400) AS summary FROM entities WHERE id=$eid;"
+    echo ""
+    echo "== TOP NOTES (importance, newest first; with dates) =="
+    sqlite3 "$DB" "SELECT '['||category||' i'||importance||' '||date(created_at)||'] '||substr(content,1,320) FROM notes WHERE entity_id=$eid ORDER BY importance DESC, created_at DESC LIMIT 20;"
+    echo ""
+    echo "== ONE-HOP RELATIONS =="
+    sqlite3 "$DB" "SELECT '(this) '||relation||' -> '||e.slug FROM relations r JOIN entities e ON e.id=r.to_id WHERE r.from_id=$eid UNION ALL SELECT e.slug||' '||relation||' -> (this)' FROM relations r JOIN entities e ON e.id=r.from_id WHERE r.to_id=$eid;"
     ;;
   decisions)
     if [ -n "$2" ]; then
@@ -123,6 +140,7 @@ Commands:
   kb handoffs                     Last 10 handoffs
   kb projects                     Active projects + products
   kb entity <slug>                Everything about an entity
+  kb context <slug|topic>         Compact: entity + top dated notes + one-hop relations (fuzzy)
   kb decisions [slug]             Recent decisions (all or per-entity)
   kb prefs                        User preferences by importance
   kb todos                        Open todos across projects

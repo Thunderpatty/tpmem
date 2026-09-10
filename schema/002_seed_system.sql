@@ -56,11 +56,11 @@ YOUR JOB AS CURATOR (when running curate-memory): Same principle. Capture to KB 
    9, 'kb-commands,reference',
    'tpmem-seed:system');
 
--- The curator. Same job as in the Wynn setup — runs daily (when cron is on),
+-- The curator. Runs in-session (manually or scheduled by the tpmem daemon) —
 -- appends to PERSISTENT.md + FLAGS.md, inserts KB audit notes, never updates/deletes.
 INSERT OR IGNORE INTO entities (type, slug, name, summary) VALUES
   ('tool', 'curator', 'Memory curator',
-   'The curate-memory skill. Runs daily (if cron is enabled) or on-demand. Reads conversation JSONL deltas, extracts what sessions missed, appends to PERSISTENT.md and FLAGS.md, inserts KB notes tagged curator:YYYY-MM-DD. Hard rule: cannot UPDATE/DELETE existing KB rows — only INSERT.');
+   'The curate-memory skill. Runs in-session — manually ("run curate-memory") or scheduled by the tpmem daemon, which wakes a persistent curator agent via tmux-inject (never `claude -p`). Reads conversation JSONL deltas, extracts what sessions missed, appends to PERSISTENT.md and FLAGS.md, inserts KB notes tagged curator:YYYY-MM-DD. Hard rule: cannot UPDATE/DELETE existing KB rows — only INSERT.');
 
 INSERT INTO notes (entity_id, category, content, importance, tags, source) VALUES
   ((SELECT id FROM entities WHERE slug='curator'), 'preference',

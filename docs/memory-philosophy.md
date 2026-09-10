@@ -74,7 +74,7 @@ The curator's job isn't just accumulation. It's *accumulation plus weaving*. The
 
 ## The pipeline (FLAGS is not a fourth layer)
 
-- **Curator captures** — `curate-memory` skill, daily via cron or on-demand. Appends to PERSISTENT.md + FLAGS.md, INSERTs KB notes. Never UPDATEs or DELETEs existing KB content.
+- **Curator captures** — `curate-memory` skill, run in-session on demand or on a schedule via the tpmem daemon. Appends to PERSISTENT.md + FLAGS.md, INSERTs KB notes. Never UPDATEs or DELETEs existing KB content.
 - **FLAGS queue** — staging area. Things the curator noticed but isn't sure about: stale-looking notes, drift signals, philosophical patterns worth promoting, duplicates. Curator never decides; the human does.
 - **User reviews** — `/review-flags` skill, weekly or on-demand. Walks the queue with the human. Each decision (APPLY/DEFER/DISMISS/DISCUSS/ESCALATE) writes to KB under `flag-review` with rationale. Resolved flags move to `FLAGS-ARCHIVE.md`.
 
@@ -82,18 +82,16 @@ This split matters: curator accumulates broadly without risk of corruption (appe
 
 ---
 
-## Why the cron matters
+## Why scheduling matters
 
-The curator is valuable because it runs without being asked. One manual capture catches today; a daily capture over a year catches everything. Without the cron, capture skips busy weeks — and the busy weeks are exactly when the most signal exists.
+The curator is valuable because it runs without being asked. One manual capture catches today; a scheduled capture over a year catches everything. Without scheduling, capture skips busy weeks — and the busy weeks are exactly when the most signal exists.
 
-The installer doesn't enable cron by default. That's a politeness decision — some users want to feel the system manually before committing. But **the compounding benefit is the whole point of this system**. Once you're comfortable, set up the cron.
+Curation always runs **inside a Claude Code session** (it reads full JSONL deltas with the Read tool and writes with judgment — not a job for a fire-and-forget `claude -p`). There are two ways to run it:
 
-Suggested line:
-```
-13 4 * * * $HOME/.tpmem/tools/curate-memory >> $HOME/.tpmem/curator-cron.log 2>&1
-```
+- **Manually** — open Claude Code and say *"run curate-memory"*. Good while you're getting a feel for the system.
+- **Scheduled** — run the tpmem daemon (`tpmem-companion-engine`). It keeps a persistent curator agent alive in a tmux session and, on a schedule, injects the curation prompt into it — waking the running agent instead of spawning a headless one. This is how you get the compounding benefit without depending on remembering to invoke it.
 
-4:13 AM local, quiet hour. Takes 2-10 minutes per run.
+**The compounding benefit is the whole point of this system.** Feel it manually for a few sessions, then run the daemon so capture doesn't depend on your memory. A run takes 2-10 minutes depending on conversation volume.
 
 ---
 
@@ -101,7 +99,7 @@ Suggested line:
 
 Retrieval-augmented generation treats memory as a flat vector store: embed things, retrieve by similarity, stuff in context. That works for some problems but not this one, because:
 
-1. **Structure matters.** "Ryan's preferences about X" is a category, not a similarity query. `kb prefs` gives you structured access; cosine similarity gives you approximations.
+1. **Structure matters.** "The user's preferences about X" is a category, not a similarity query. `kb prefs` gives you structured access; cosine similarity gives you approximations.
 2. **The narrative layer is load-bearing.** PERSISTENT.md isn't retrieval — it's a deliberately curated synthesis. A vector store can't produce "here's how we work together" as prose with citations; you have to write it.
 3. **Governance is explicit.** The FLAGS queue + review cycle is a conscious human-in-the-loop. RAG systems hide the curation problem; we foreground it.
 
@@ -115,7 +113,7 @@ Use the right tool for the job. This system is built for *relationship memory*, 
 2. Three layers with distinct jobs: MEMORY (bootstrap), PERSISTENT (narrative map), KB (queryable substrate).
 3. **The KB is only as good as its references in PERSISTENT.md.** Weave, don't just accumulate.
 4. Curator captures broadly; user governs via weekly review.
-5. Cron matters because compounding matters.
+5. Scheduling matters because compounding matters — run the daemon so capture doesn't depend on memory.
 6. Bias toward capture; under-capture is worse than bloat.
 7. When in doubt, flag.
 

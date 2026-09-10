@@ -1,67 +1,52 @@
 #!/usr/bin/env bash
-# curate-memory — invoke the curate-memory skill in a headless Claude session.
+# curate-memory — snapshot helper for the curator.
+#
+# NOTE: This tool NO LONGER spawns a headless Claude session. Curation itself
+# now runs inside a Claude Code session:
+#   • Manually: open Claude Code and say "run curate-memory" (invokes the
+#     curate-memory skill in your live session).
+#   • Scheduled: run the tpmem daemon (tpmem-companion-engine), which wakes a
+#     persistent curator agent on a schedule by injecting the curation prompt
+#     into its tmux session. No `claude -p`.
+#
+# All this wrapper does is take a timestamped backup of PERSISTENT.md and keep
+# the last 7. The curate-memory skill runs this (or the equivalent) as its
+# first step, so the snapshot happens whenever curation runs — but you can also
+# run it standalone before hand-editing PERSISTENT.md.
 #
 # Usage:
-#   curate-memory              # delta-only mode (default)
-#   curate-memory --full       # force full re-read of all conversations
-#
-# Designed for cron. Also callable manually.
-# Output goes to stdout and ~/.tpmem/curator-cron.log.
+#   curate-memory            # snapshot PERSISTENT.md, keep last 7
 
 set -euo pipefail
 
 TPMEM_DIR="${TPMEM_DIR:-${HOME}/.tpmem}"
 LOG="${TPMEM_DIR}/curator-cron.log"
-MODE="${1:-delta}"
-
-# Make sure PATH includes common node/claude locations when run from cron
-export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 timestamp() { date -Iseconds; }
 log() { echo "[$(timestamp)] $*" | tee -a "$LOG"; }
 
-log "=== curate-memory run starting (mode=${MODE}) ==="
-
-# Snapshot PERSISTENT.md before the agent touches it. Keep last 7.
 # Find PERSISTENT.md — it lives in the Claude Code project memory dir.
 # Default layout: ~/.claude/projects/-home-$USER/memory/PERSISTENT.md
+# Override via PERSISTENT_MD if your project dir is non-standard.
 PROJECT_MEM_DIR="${HOME}/.claude/projects/-home-${USER}/memory"
-PERSISTENT="${PROJECT_MEM_DIR}/PERSISTENT.md"
+PERSISTENT="${PERSISTENT_MD:-${PROJECT_MEM_DIR}/PERSISTENT.md}"
 BACKUP_DIR="${TPMEM_DIR}/persistent-backups"
 
 if [[ -f "$PERSISTENT" ]]; then
     mkdir -p "$BACKUP_DIR"
     cp -p "$PERSISTENT" "${BACKUP_DIR}/PERSISTENT-$(date +%Y-%m-%d-%H%M%S).md"
     ls -1t "${BACKUP_DIR}"/PERSISTENT-*.md 2>/dev/null | tail -n +8 | xargs -r rm -f
-    log "snapshotted PERSISTENT.md to ${BACKUP_DIR}"
+    log "snapshotted PERSISTENT.md to ${BACKUP_DIR} (keeping last 7)"
 else
-    log "note: PERSISTENT.md not found at $PERSISTENT — will be created on first run"
+    log "note: PERSISTENT.md not found at $PERSISTENT — nothing to snapshot yet"
 fi
 
-if [[ "$MODE" == "--full" ]]; then
-    PROMPT="Invoke the curate-memory skill with --full mode. Ignore the manifest and treat every conversation as new. This is a force-refresh run."
-else
-    PROMPT="Invoke the curate-memory skill. Read the manifest, find conversation deltas since last run, extract relational/philosophical/factual/reality-drift content that sessions didn't write to the KB. Add to PERSISTENT.md (with KB citations), FLAGS.md, and KB per the skill's permission boundaries. Write the self-audit entry when done."
-fi
+cat <<'EOF'
 
-if ! command -v claude >/dev/null 2>&1; then
-    log "ERROR: claude CLI not found in PATH. Install Claude Code first."
-    exit 127
-fi
+curate-memory: snapshot done.
 
-# Note: the --add-dir arg adds read/write access for the dirs the skill needs.
-if claude \
-    -p "$PROMPT" \
-    --effort max \
-    --permission-mode bypassPermissions \
-    --max-budget-usd 5 \
-    --add-dir "${TPMEM_DIR}" \
-    --add-dir "${HOME}/.claude/projects/-home-${USER}" \
-    2>&1 | tee -a "$LOG"; then
-    log "=== curate-memory run complete ==="
-    exit 0
-else
-    EXIT=$?
-    log "=== curate-memory run FAILED (exit=${EXIT}) ==="
-    exit "$EXIT"
-fi
+Curation itself runs IN-SESSION, not from this wrapper:
+  • Manual   → open Claude Code and say "run curate-memory".
+  • Scheduled → run the tpmem daemon (tpmem-companion-engine); it wakes a
+               persistent curator agent via tmux-inject on a schedule.
+EOF

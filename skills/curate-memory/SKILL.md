@@ -1,6 +1,6 @@
 ---
 name: curate-memory
-description: Scheduled curation of your agent's persistent memory. Reads Claude Code conversation deltas since last run, extracts context sessions didn't write to the KB (philosophical/relational moments, mid-task discoveries, reality signals), adds to PERSISTENT.md, FLAGS.md, and KB. Runs daily via cron (when enabled); can also be invoked manually ("run curate-memory").
+description: Curation of your agent's persistent memory. Reads Claude Code conversation deltas since last run, extracts context sessions didn't write to the KB (philosophical/relational moments, mid-task discoveries, reality signals), adds to PERSISTENT.md, FLAGS.md, and KB. Runs in-session — manually ("run curate-memory") or scheduled by the tpmem daemon, which wakes a persistent curator agent via tmux-inject.
 ---
 
 # curate-memory
@@ -38,7 +38,27 @@ Enforce these by convention. If you find yourself reaching for an UPDATE or DELE
 
 ## Procedure
 
-### 1. Read the manifest and find deltas
+### 1. Snapshot PERSISTENT.md (first, always)
+
+Before you touch PERSISTENT.md, take a timestamped backup and keep the last 7. This is the safety net: curation only ever appends, but a snapshot means a bad run is always recoverable. Run the helper (which does exactly this):
+
+```bash
+curate-memory
+```
+
+Or, equivalently, inline:
+
+```bash
+PERSISTENT="${PERSISTENT_MD:-$HOME/.claude/projects/-home-$USER/memory/PERSISTENT.md}"
+BACKUP_DIR="$HOME/.tpmem/persistent-backups"
+if [ -f "$PERSISTENT" ]; then
+  mkdir -p "$BACKUP_DIR"
+  cp -p "$PERSISTENT" "$BACKUP_DIR/PERSISTENT-$(date +%Y-%m-%d-%H%M%S).md"
+  ls -1t "$BACKUP_DIR"/PERSISTENT-*.md 2>/dev/null | tail -n +8 | xargs -r rm -f
+fi
+```
+
+### 2. Read the manifest and find deltas
 
 ```bash
 cat $HOME/.tpmem/conversation-manifest.json
@@ -65,7 +85,7 @@ Walk `$HOME/.claude/projects/-home-$USER/` for all `*.jsonl` files. For each fil
 - If **in manifest and current bytes == manifest bytes** → UNCHANGED, skip entirely.
 - If **in manifest and current bytes < manifest bytes** → anomaly (truncated or rotated). Read in full and flag for review.
 
-### 2. Read the delta content
+### 3. Read the delta content
 
 For each flagged file, read the delta range. JSONL files: one JSON object per line. Parse selectively:
 - Focus on `user` and `assistant` text content.
@@ -74,7 +94,7 @@ For each flagged file, read the delta range. JSONL files: one JSON object per li
 
 Practical extraction: `jq -r 'select(.type=="user" or .type=="assistant") | ...'` to strip to conversational text, then read the extracted file with the Read tool using offset+limit for chunking.
 
-### 3. Extraction filter — the enrichment test
+### 4. Extraction filter — the enrichment test
 
 Persistent memory exists to make the partnership compound. Every session should start smarter than the last. Your job is to capture the substrate of an ongoing collaboration that doesn't naturally have one.
 
@@ -97,7 +117,7 @@ Persistent memory exists to make the partnership compound. Every session should 
 
 **Bias toward capture.** Storage is cheap; re-deriving context is expensive. The failure mode to fear is *under-capture*, not bloat. If it enriches the shared working context even slightly, write it. The user governs volume via weekly review; you collect.
 
-### 4. Destination routing
+### 5. Destination routing
 
 Every captured piece goes to exactly one place:
 
@@ -125,7 +145,7 @@ Every captured piece goes to exactly one place:
 
 Curator **never** updates or deletes existing KB content. If it looks wrong, flag. The review workflow (`/review-flags` skill) handles the write side.
 
-### 5. Calibration examples
+### 6. Calibration examples
 
 **Capture → PERSISTENT.md with citation:**
 > [Verbatim quote from user articulating how you should collaborate]
@@ -144,7 +164,7 @@ Curator **never** updates or deletes existing KB content. If it looks wrong, fla
 **Skip:**
 > "Fix was at app.js line 3553" — git blame has this; don't dual-store.
 
-### 6. Write outputs
+### 7. Write outputs
 
 **PERSISTENT.md**: Append new content to appropriate sections with a marker comment:
 ```markdown
@@ -169,11 +189,11 @@ VALUES (
 
 Use source prefix `curator:` so these are distinguishable from session-written notes.
 
-### 7. Update manifest
+### 8. Update manifest
 
 Once all deltas are processed, rewrite `$HOME/.tpmem/conversation-manifest.json` with new byte sizes and `last_processed_at` timestamps.
 
-### 8. Self-audit
+### 9. Self-audit
 
 Append to `$HOME/.tpmem/curator-audit.log`:
 ```
@@ -203,11 +223,13 @@ Importance=3 keeps these out of the way in normal queries but searchable.
 
 ## Invocation
 
-**Daily cron** runs: no args needed, default delta-only mode.
+This skill always runs **inside a Claude Code session** — never via `claude -p`.
 
-**Manual invocation from a Claude session**: say "run curate-memory" or invoke this skill directly.
+**Manual invocation**: say "run curate-memory" in a live session, or invoke this skill directly. Default delta-only mode.
 
-**Force full re-read** (for suspected drift): run with arg `--full`. Ignores the manifest, treats every conversation as new. Expensive; use sparingly.
+**Scheduled invocation**: the tpmem daemon (`tpmem-companion-engine`) keeps a persistent curator agent alive in a tmux session and, on a schedule, injects the curation prompt into it — waking the running agent rather than spawning a headless one. Same skill, same procedure; the only difference from a manual run is who typed "run curate-memory". If you're reading this because the daemon just woke you, proceed with the Procedure below.
+
+**Force full re-read** (for suspected drift): run with the instruction to treat every conversation as new (ignore the manifest). Expensive; use sparingly.
 
 **First-ever baseline run**: see the BASELINE PROCEDURE below. If the manifest's `conversations` map is empty, you are a baseline run — follow that procedure instead of the standard Procedure above.
 
@@ -264,7 +286,7 @@ Process files from **smallest to largest**. Rationale: small files let you calib
 
 ### Baseline extraction posture
 
-Apply the normal enrichment filter (Section 3). Baseline's posture is the same as daily — capture freely, flag uncertainties, skip only ephemera and on-disk duplicates.
+Apply the normal enrichment filter (Section 4). Baseline's posture is the same as daily — capture freely, flag uncertainties, skip only ephemera and on-disk duplicates.
 
 **Duplicate check remains mandatory**: `kb search "<key terms>"` before every KB insert. If existing KB content already covers it, skip. If it's a refinement, flag as `kb-hygiene`.
 

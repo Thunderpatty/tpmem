@@ -65,9 +65,9 @@ Say hello. Tell them you've read the onboarding. Then ask a short set of questio
 - **Anything you'd like me to remember about this machine?** (Paths, tools, weird setups, box history.)
 
 Write what they tell you:
-- Identity facts → `kb entity user` notes (use `category='preference'` for style/working agreements, `'fact'` for biographical/environmental, `'decision'` for project-level calls).
+- Identity facts → `kb entity user` notes. Use the `kb-note` tool rather than hand-rolling SQL — it validates the category, checks the entity exists, and verifies the row landed: `kb-note user --cat preference --content "..." --imp 8` (categories: `preference` for style/working agreements, `fact` for biographical/environmental, `decision` for project-level calls).
 - "Don't break" items → MEMORY.md's `DO NOT BREAK` section directly.
-- Projects → new entities (`sqlite3 $HOME/.tpmem/kb.db "INSERT INTO entities (type, slug, name, summary) VALUES ('project', '<slug>', '<name>', '<one-paragraph>');"`).
+- Projects → new entities (`sqlite3 $HOME/.tpmem/kb.db "INSERT INTO entities (type, slug, name, summary) VALUES ('project', '<slug>', '<name>', '<one-paragraph>');"`), then attach notes with `kb-note <slug> --cat ...`.
 
 ### 3. Decide if you want a name
 
@@ -112,30 +112,27 @@ If you pass the 6th argument (acceptance criteria), the project auto-flips to `p
 
 ---
 
-## Settling in — the cron recommendation
+## Settling in — the scheduling recommendation
 
-The curator's value is *cumulative*. One manual run captures what you missed today; a daily run captures what you miss for a year. **Without the cron, capture only happens when the user remembers to invoke it manually, and gaps creep in** — relational moments from a busy week evaporate, reality-drift signals age past relevance, lessons rot before they're surfaced.
+The curator's value is *cumulative*. One manual run captures what you missed today; a scheduled run captures what you miss for a year. **Without scheduling, capture only happens when the user remembers to invoke it manually, and gaps creep in** — relational moments from a busy week evaporate, reality-drift signals age past relevance, lessons rot before they're surfaced.
 
-The installer deliberately doesn't enable cron by default. But **you should proactively offer to set it up once the user is comfortable with the system** (usually a few sessions in). Suggested line:
+Curation always runs **inside a Claude Code session** — never via a headless `claude -p`. There are two ways to run it:
 
-```
-13 4 * * * $HOME/.tpmem/tools/curate-memory >> $HOME/.tpmem/curator-cron.log 2>&1
-```
+- **Manually** — say "run curate-memory" (or invoke the skill) in a live session.
+- **Scheduled** — run the tpmem daemon (`tpmem-companion-engine`). It keeps a persistent curator agent alive in a tmux session and injects the curation prompt into it on a schedule, waking the running agent rather than spawning a new one.
 
-4:13 AM local, quiet hour, writes to a separate log. Takes 2-10 minutes per run depending on conversation volume. Cheap on any Claude plan.
-
-Don't push it on session 1 — let the user feel the system first. But don't forget to offer either; the compounding benefit is the whole point.
+**You should proactively suggest setting up the daemon once the user is comfortable with the system** (usually a few sessions in). Don't push it on session 1 — let the user feel the system manually first. But don't forget to offer either; the compounding benefit is the whole point. A run takes 2-10 minutes depending on conversation volume.
 
 ---
 
 ## The two skills you'll use
 
-**`curate-memory`** (daily or on-demand):
+**`curate-memory`** (in-session — on-demand or daemon-scheduled):
 - Reads JSONL conversation deltas
 - Extracts relational/philosophical/factual content sessions missed
 - Appends to PERSISTENT.md + FLAGS.md, inserts KB notes
 - **Cannot UPDATE or DELETE** existing KB rows — flags stale content instead
-- Invoke: "run curate-memory" or `curate-memory` on the command line
+- Invoke: say "run curate-memory" in a live session (the `curate-memory` CLI tool only snapshots PERSISTENT.md; it does not curate)
 
 **`/review-flags`** (weekly, or when user asks):
 - Walks pending-review projects + curator flags

@@ -30,8 +30,8 @@ cat <<'EOF'
 │    3. Install 2 skills to ~/.claude/skills/                      │
 │    4. Place MEMORY.md + PERSISTENT.md + FLAGS.md templates       │
 │       in your Claude Code project memory dir                     │
-│    5. Add ~/.tpmem/tools/ to PATH via your shell rc              │
-│    6. Offer to set up a daily curator cron (default: off)        │
+│    5. Install kb / kb-note / curate-memory tools + add           │
+│       ~/.tpmem/tools/ to PATH via your shell rc                  │
 │                                                                  │
 │  After install, open a Claude Code session and say:              │
 │    "Read <this-repo>/docs/agent-onboarding.md and set up         │
@@ -64,7 +64,8 @@ if command -v claude >/dev/null 2>&1; then
   echo "  ✓ claude CLI found"
 else
   echo "  ⚠ claude CLI not found in PATH"
-  echo "    Not strictly required for install, but needed for the curator wrapper."
+  echo "    Not required for install, but you'll want Claude Code to actually use"
+  echo "    the memory system (curation runs inside a Claude Code session)."
   echo "    Install Claude Code: https://claude.com/claude-code"
 fi
 
@@ -126,9 +127,11 @@ echo ""
 echo "→ Installing tools..."
 
 install -m 0755 "${REPO_DIR}/tools/kb" "${TPMEM_DIR}/tools/kb"
+install -m 0755 "${REPO_DIR}/tools/kb-note" "${TPMEM_DIR}/tools/kb-note"
 install -m 0755 "${REPO_DIR}/tools/curate-memory" "${TPMEM_DIR}/tools/curate-memory"
 echo "  ✓ kb → ${TPMEM_DIR}/tools/kb"
-echo "  ✓ curate-memory → ${TPMEM_DIR}/tools/curate-memory"
+echo "  ✓ kb-note → ${TPMEM_DIR}/tools/kb-note"
+echo "  ✓ curate-memory → ${TPMEM_DIR}/tools/curate-memory (PERSISTENT.md snapshot helper)"
 
 # Add to PATH via shell rc (idempotent)
 SHELL_RC=""
@@ -211,36 +214,17 @@ EOF
   echo "  ✓ Empty conversation manifest created at ${MANIFEST}"
 fi
 
-# ─── Cron offer ────────────────────────────────────────────────
+# ─── Scheduling note ───────────────────────────────────────────
 echo ""
-echo "→ Daily curator cron (recommended for maximum cumulative effect)"
+echo "→ Curation & scheduling"
 echo ""
-echo "  The curator's value compounds. One manual run captures what you missed today;"
-echo "  a daily run captures what you miss for a year. Without the cron, capture only"
-echo "  happens when you remember to invoke it manually, and gaps creep in."
+echo "  Curation runs INSIDE a Claude Code session, not from a headless job:"
+echo "    • Manually  → open Claude Code and say \"run curate-memory\"."
+echo "    • Scheduled → run the tpmem daemon (tpmem-companion-engine), which wakes"
+echo "                  a persistent curator agent via tmux-inject on a schedule."
 echo ""
-echo "  We DEFAULT TO OFF so you can feel the system manually first. STRONGLY"
-echo "  RECOMMENDED to enable it once you're comfortable (a few sessions in)."
-echo "  Your agent can help you set it up later when you're ready."
-echo ""
-read -r -p "  Install daily cron now? [y/N] " cron_yn
-case "$cron_yn" in
-  [Yy]*)
-    CRON_LINE="13 4 * * * ${TPMEM_DIR}/tools/curate-memory >> ${TPMEM_DIR}/curator-cron.log 2>&1"
-    if crontab -l 2>/dev/null | grep -q 'tpmem/tools/curate-memory'; then
-      echo "  ✓ Cron already installed."
-    else
-      (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-      echo "  ✓ Cron installed: runs daily at 04:13 local time."
-    fi
-    ;;
-  *)
-    echo "  → Skipped. To add later:"
-    echo "      crontab -e"
-    echo "    and add:"
-    echo "      13 4 * * * ${TPMEM_DIR}/tools/curate-memory >> ${TPMEM_DIR}/curator-cron.log 2>&1"
-    ;;
-esac
+echo "  The curator's value compounds — feel it manually for a few sessions, then"
+echo "  run the daemon so capture doesn't depend on you remembering to invoke it."
 
 # ─── Done ──────────────────────────────────────────────────────
 cat <<EOF
@@ -260,7 +244,8 @@ cat <<EOF
 │  Your agent will read the onboarding, introduce itself, ask      │
 │  about you and your work, and offer to run the baseline.         │
 │                                                                  │
-│  Cron: ${cron_yn:-N} (recommended once you're comfortable)                    │
+│  Scheduling: run the tpmem daemon for automatic curation         │
+│  (see docs/memory-philosophy.md). Manual: "run curate-memory".   │
 │                                                                  │
 │  Verify: kb stats                                                │
 │                                                                  │

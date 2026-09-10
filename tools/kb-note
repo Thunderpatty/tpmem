@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""kb-note — validated KB note writes.
+
+Recurring mechanical errors get compiled into mechanism. Agents hand-rolling
+`INSERT INTO notes (...)` get column arity/order wrong under pressure; this is
+the one write path that cannot. Named flags, validated category enum, entity
+existence check, readback verification.
+
+Usage:
+  kb-note <entity-slug> --cat <category> --content "..." [--imp 1-10] [--tags a,b] [--source who]
+  echo "long content" | kb-note <entity-slug> --cat fact --stdin [--imp N] ...
+
+Categories: decision | preference | lesson | fact | todo | rationale | risk |
+            milestone | audit | status | bug | incident
+
+Env:
+  TPMEM_DB   path to kb.db (default ~/.tpmem/kb.db)
+  AGENT_SLUG default value for --source
+
+Exit 0 only after readback confirms the row landed.
+"""
+from __future__ import annotations
+import os, sqlite3, sys
+
+DB = os.path.expanduser(os.environ.get("TPMEM_DB", "~/.tpmem/kb.db"))
+CATEGORIES = ("decision", "preference", "lesson", "fact", "todo", "rationale",
+              "risk", "milestone", "audit", "status", "bug", "incident")
+
+
+def arg_after(args, flag, default=None):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+def main() -> int:
+    a = sys.argv[1:]
+    if not a or a[0].startswith("-"):
+        print(__doc__); return 2
+    slug = a[0]
+    cat = arg_after(a, "--cat")
+    content = sys.stdin.read().strip() if "--stdin" in a else arg_after(a, "--content")
+    imp = arg_after(a, "--imp", "5")
+    tags = arg_after(a, "--tags")
+    source = arg_after(a, "--source", os.environ.get("AGENT_SLUG", "kb-note"))
+
+    errs = []
+    if not cat:
+        errs.append("--cat is required")
+    elif cat not in CATEGORIES:
+        errs.append(f"--cat '{cat}' not in {CATEGORIES}")
+    if not content:
+        errs.append("--content (or --stdin) is required and non-empty")
+    try:
+        imp_n = int(imp)
+        if not 1 <= imp_n <= 10:
+            errs.append("--imp must be 1-10")
+    except ValueError:
+        errs.append(f"--imp '{imp}' is not an integer")
+        imp_n = 5
+    if errs:
+        for e in errs:
+            print(f"kb-note: {e}", file=sys.stderr)
+        return 2
+
+    con = sqlite3.connect(DB, timeout=15)
+    con.execute("PRAGMA busy_timeout=15000;")
+    ent = con.execute("SELECT id FROM entities WHERE slug=?", (slug,)).fetchone()
+    if not ent:
+        near = con.execute(
+            "SELECT slug FROM entities WHERE slug LIKE ? LIMIT 5", (f"%{slug}%",)).fetchall()
+        print(f"kb-note: no entity '{slug}'"
+              + (f" — near matches: {', '.join(r[0] for r in near)}" if near else
+                 " — create the entity first (no orphan notes)"), file=sys.stderr)
+        return 1
+
+    cur = con.execute(
+        "INSERT INTO notes (entity_id, category, content, importance, tags, source) "
+        "VALUES (?,?,?,?,?,?)",
+        (ent[0], cat, content, imp_n, tags, source))
+    con.commit()
+    nid = cur.lastrowid
+    con.close()
+
+    ver = sqlite3.connect(DB, timeout=15)
+    ok = ver.execute("SELECT 1 FROM notes WHERE id=?", (nid,)).fetchone()
+    ver.close()
+    if not ok:
+        print("kb-note: READBACK FAILED — note not durable", file=sys.stderr)
+        return 1
+    print(f"kb-note: {nid} -> {slug} [{cat}] verified")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

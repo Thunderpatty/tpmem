@@ -10,7 +10,7 @@ Three layers + a curator + a review workflow.
 - **PERSISTENT.md** — narrative layer read at session start. How the agent and user work together, active projects, patterns. Mostly written by the curator. Every claim cites a KB slug.
 - **KB** — SQLite at `~/.tpmem/kb.db`. Entities, notes, relations, handoffs, FTS5 full-text search. Queryable via a `kb` CLI helper.
 - **FLAGS** — staging queue where the curator parks "uncertain" items. User processes weekly via the `/review-flags` skill.
-- **Curator** — `curate-memory` skill that reads conversation JSONL deltas, extracts what sessions missed (relational moments, frameworks, lessons, reality-drift), appends to PERSISTENT.md + FLAGS.md, INSERTs KB notes. Daily via cron or on-demand.
+- **Curator** — `curate-memory` skill that reads conversation JSONL deltas, extracts what sessions missed (relational moments, frameworks, lessons, reality-drift), appends to PERSISTENT.md + FLAGS.md, INSERTs KB notes. Runs in-session: on demand ("run curate-memory"), or scheduled by the tpmem daemon, which wakes a persistent curator agent via tmux-inject (never a headless `claude -p`).
 
 ## Load-bearing rule
 
@@ -33,8 +33,7 @@ The installer:
 4. Applies schema, seeds system entities + 7 universal dev lessons.
 5. Installs `curate-memory` + `review-flags` skills to `~/.claude/skills/`.
 6. Drops MEMORY.md + PERSISTENT.md + FLAGS.md templates in your Claude Code project memory dir.
-7. Adds `~/.tpmem/tools/` to PATH.
-8. Offers to set up a daily cron (default: off — strongly recommended once you're comfortable).
+7. Installs the `kb`, `kb-note`, and `curate-memory` tools and adds `~/.tpmem/tools/` to PATH.
 
 ## After install
 
@@ -64,10 +63,11 @@ Retrieval-augmented generation is great for needle-in-a-haystack lookup. This sy
 ├─ curator-cron.log              # Run log
 ├─ curator-audit.log
 ├─ migrations/                   # Schema SQL
-├─ persistent-backups/           # Curator snapshots (keeps last 7)
+├─ persistent-backups/           # PERSISTENT.md snapshots (keeps last 7)
 └─ tools/
-   ├─ kb                         # CLI helper
-   └─ curate-memory              # Wrapper for cron / manual invocation
+   ├─ kb                         # CLI helper (read/query + handoffs + status)
+   ├─ kb-note                    # Validated KB note writer (readback-verified)
+   └─ curate-memory              # PERSISTENT.md snapshot helper
 
 ~/.claude/skills/
 ├─ curate-memory/SKILL.md
@@ -87,16 +87,21 @@ kb search <term>                  # Full-text search
 kb prefs                          # User preferences by importance
 kb projects                       # Active projects + products
 kb pending-reviews                # Entities awaiting user review
+kb context <slug|topic>           # Compact entity view (fuzzy): top notes + one-hop relations
 kb stats                          # Row counts
 kb write-handoff <project> <completed> <next_steps> [open_q] [blockers] [acceptance_criteria]
 
-curate-memory                     # Invoke curator (headless Claude session)
-curate-memory --full              # Force full re-read of all conversations
+# Validated KB writes (named flags, category-checked, readback-verified):
+kb-note <slug> --cat <category> --content "..." [--imp 1-10] [--tags a,b] [--source who]
+echo "long content" | kb-note <slug> --cat fact --stdin
+
+curate-memory                     # Snapshot PERSISTENT.md (keep last 7). Curation runs in-session — see below.
 ```
 
-In a Claude Code session:
-- *"run curate-memory"* — invoke the capture skill
-- *"review flags"* or *"/review-flags"* — walk the user through the pending queue
+Curation runs **in-session**, not from a headless `claude -p`:
+- *"run curate-memory"* — invoke the capture skill in your live Claude Code session.
+- For automatic scheduling, run the tpmem daemon (`tpmem-companion-engine`): it keeps a persistent curator agent alive and injects the curation prompt into its tmux session on a schedule.
+- *"review flags"* or *"/review-flags"* — walk the user through the pending queue.
 
 ## Philosophy
 
@@ -106,7 +111,7 @@ See `docs/memory-philosophy.md` for the longer version. Short version:
 2. Three layers with distinct jobs: MEMORY (bootstrap), PERSISTENT (narrative map), KB (queryable substrate).
 3. **The KB is only as good as its references in PERSISTENT.md.** Weave, don't just accumulate.
 4. Curator captures broadly; user governs via weekly review.
-5. Cron matters because compounding matters.
+5. Scheduling matters because compounding matters — run the daemon so capture doesn't depend on memory.
 6. Bias toward capture; under-capture is worse than bloat.
 7. When in doubt, flag.
 
@@ -134,7 +139,6 @@ rm ~/.claude/projects/-home-$USER/memory/PERSISTENT.md
 # Remove the PATH line from your shell rc
 # (edit ~/.bashrc or ~/.zshrc and delete the "tpmem — persistent memory tools" block)
 
-# Remove the cron line
-crontab -e
-# delete the line containing "tpmem/tools/curate-memory"
+# If you set up scheduled curation via the tpmem daemon (tpmem-companion-engine),
+# stop/uninstall that separately per its own instructions.
 ```
